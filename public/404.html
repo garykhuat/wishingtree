@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <title>Wishing Tree – Cây Trà Nguyện Ước</title>
+    <script type="text/javascript">
+      // GitHub Pages SPA 404 redirect script
+      // When a user accesses /wish, /display, or /admin directly on GitHub Pages,
+      // GitHub serves this 404.html. This script redirects to the app entry with ?view=
+      (function() {
+        var l = window.location;
+        var fullPath = l.pathname;
+        var isGitHub = l.hostname.indexOf('github.io') !== -1;
+        
+        // Match target route
+        var lower = fullPath.toLowerCase();
+        var viewParam = 'home';
+        if (lower.indexOf('wish') !== -1) {
+          viewParam = 'wish';
+        } else if (lower.indexOf('display') !== -1) {
+          viewParam = 'display';
+        } else if (lower.indexOf('admin') !== -1) {
+          viewParam = 'admin';
+        }
+
+        // Determine base path (e.g. /repo-name/ or /)
+        var pathSegments = fullPath.split('/').filter(Boolean);
+        var repoName = '';
+        if (isGitHub && pathSegments.length > 0) {
+          if (['display', 'wish', 'admin'].indexOf(pathSegments[0].toLowerCase()) === -1) {
+            repoName = pathSegments[0];
+          }
+        }
+
+        var basePath = repoName ? '/' + repoName + '/' : '/';
+        var newUrl = l.protocol + '//' + l.host + basePath + (viewParam !== 'home' ? '?view=' + viewParam : '') + (l.hash || '');
+        l.replace(newUrl);
+      })();
+    </script>
+  </head>
+  <body style="background-color: #07150E; color: #F7F5EB; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+    <div style="text-align: center;">
+      <h2 style="color: #4ADE80;">Cây Trà Nguyện Ước</h2>
+      <p style="opacity: 0.8;">Đang kết nối tới hệ thống điều ước...</p>
+    </div>
+  </body>
+</html>

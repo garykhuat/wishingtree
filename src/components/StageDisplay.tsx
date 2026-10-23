@@ -24,17 +24,23 @@ export const StageDisplay: React.FC<StageDisplayProps> = ({
   const stageRef = useRef<HTMLDivElement>(null);
   const feedScrollRef = useRef<HTMLDivElement>(null);
 
-  // Compute live submission URL
+  // Compute live submission URL (safe for GitHub Pages, custom subpaths, and root domains)
   const wishUrl = useMemo(() => {
     if (typeof window !== 'undefined') {
-      return `${window.location.origin}/wish`;
+      const cleanPath = window.location.pathname.replace(/\/+$/, '');
+      const isGitHub = window.location.hostname.includes('github.io');
+      if (isGitHub || cleanPath.split('/').length > 1) {
+        return `${window.location.origin}${cleanPath}/?view=wish`;
+      }
+      return `${window.location.origin}/?view=wish`;
     }
     return 'https://wishingtree.event/wish';
   }, []);
 
   const displayUrl = useMemo(() => {
     if (typeof window !== 'undefined') {
-      return `${window.location.host}/wish`;
+      const cleanPath = window.location.pathname.replace(/\/+$/, '');
+      return `${window.location.host}${cleanPath}/?view=wish`;
     }
     return 'wishingtree.event/wish';
   }, []);

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <title>Sân Khấu LED – Cây Trà Nguyện Ước</title>
+    <script type="text/javascript">
+      (function() {
+        var l = window.location;
+        var path = l.pathname.replace(/\/display\/?$/i, '');
+        var target = l.protocol + '//' + l.host + (path ? path : '') + '/?view=display' + (l.hash || '');
+        l.replace(target);
+      })();
+    </script>
+  </head>
+  <body style="background-color: #07150E; color: #F7F5EB; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+    <div style="text-align: center;">
+      <h2 style="color: #4ADE80;">Sân Khấu LED</h2>
+      <p style="opacity: 0.8;">Đang mở màn hình sân khấu...</p>
+    </div>
+  </body>
+</html>

@@ -6,6 +6,25 @@ interface HomeNavigationProps {
 }
 
 export const HomeNavigation: React.FC<HomeNavigationProps> = ({ onNavigate }) => {
+  // Compute safe URLs for opening views in separate tabs (safe across GitHub Pages and custom subpaths)
+  const displayTabUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return '/display';
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    return `${window.location.origin}${cleanPath}/?view=display`;
+  }, []);
+
+  const wishTabUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return '/wish';
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    return `${window.location.origin}${cleanPath}/?view=wish`;
+  }, []);
+
+  const adminTabUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return '/admin';
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    return `${window.location.origin}${cleanPath}/?view=admin`;
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#092015] text-[#F7F5EB] flex flex-col justify-between p-6 sm:p-12 relative overflow-hidden">
       {/* Background ambient lighting */}
@@ -79,7 +98,7 @@ export const HomeNavigation: React.FC<HomeNavigationProps> = ({ onNavigate }) =>
 
             <div className="pt-5 mt-4 border-t border-white/10 flex items-center justify-between gap-2">
               <a
-                href="/display"
+                href={displayTabUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
@@ -120,9 +139,22 @@ export const HomeNavigation: React.FC<HomeNavigationProps> = ({ onNavigate }) =>
               </p>
             </div>
 
-            <div className="pt-6 mt-4 border-t border-white/10 flex items-center justify-between text-xs text-[#F5A623] font-bold group-hover:text-white">
-              <span>Mở /wish</span>
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            <div className="pt-5 mt-4 border-t border-white/10 flex items-center justify-between gap-2">
+              <a
+                href={wishTabUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="px-3 py-1.5 rounded-lg bg-[#F5A623]/20 hover:bg-[#F5A623]/30 text-[#F5A623] border border-[#F5A623]/40 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                title="Mở giao diện gửi điều ước trong tab mới"
+              >
+                <span>Mở Tab Riêng</span>
+              </a>
+
+              <div className="flex items-center gap-1 text-xs text-[#F5A623] font-bold group-hover:text-white">
+                <span>Vào trang</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
             </div>
           </div>
 
@@ -150,9 +182,22 @@ export const HomeNavigation: React.FC<HomeNavigationProps> = ({ onNavigate }) =>
               </p>
             </div>
 
-            <div className="pt-6 mt-4 border-t border-white/10 flex items-center justify-between text-xs text-[#D7AE48] font-medium group-hover:text-white">
-              <span>Mở /admin</span>
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            <div className="pt-5 mt-4 border-t border-white/10 flex items-center justify-between gap-2">
+              <a
+                href={adminTabUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="px-3 py-1.5 rounded-lg bg-[#D7AE48]/20 hover:bg-[#D7AE48]/30 text-[#D7AE48] border border-[#D7AE48]/40 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                title="Mở giao diện quản trị trong tab mới"
+              >
+                <span>Mở Tab Riêng</span>
+              </a>
+
+              <div className="flex items-center gap-1 text-xs text-[#D7AE48] font-medium group-hover:text-white">
+                <span>Vào trang</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
             </div>
           </div>
         </div>

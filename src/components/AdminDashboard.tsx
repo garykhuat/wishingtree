@@ -42,6 +42,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Data state
   const [wishes, setWishes] = useState<Wish[]>([]);
+
+  // Safe tab URLs for GitHub Pages & custom subpaths
+  const displayTabUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '/display';
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    return `${window.location.origin}${cleanPath}/?view=display`;
+  }, []);
+
+  const wishTabUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '/wish';
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    return `${window.location.origin}${cleanPath}/?view=wish`;
+  }, []);
   const [settings, setSettings] = useState<EventSettings | null>(null);
   const [stats, setStats] = useState<WishStats>({
     total: 0,
@@ -409,7 +422,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="flex items-center gap-2.5 flex-wrap">
             {/* Direct Open in New Tab for Stage LED */}
             <a
-              href="/display"
+              href={displayTabUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-[#16A34A] to-[#22C55E] hover:from-[#15803D] hover:to-[#16A34A] border border-[#86EFAC]/50 shadow-md transition-all cursor-pointer"
@@ -419,17 +432,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span>Mở Sân Khấu (Tab riêng cho LED)</span>
             </a>
 
-            {onNavigateToWish && (
-              <a
-                href="/wish"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/80 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-                title="Mở trang gửi điều ước trong tab mới"
-              >
-                <span>Trang Gửi Lời Ước</span>
-              </a>
-            )}
+            <a
+              href={wishTabUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/80 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+              title="Mở trang gửi điều ước trong tab mới"
+            >
+              <span>Trang Gửi Lời Ước</span>
+            </a>
 
             <button
               onClick={() => setShowSettingsModal(true)}

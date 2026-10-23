@@ -7,41 +7,75 @@ import { Tv, Smartphone, ShieldCheck, Home } from 'lucide-react';
 
 type Route = 'home' | 'display' | 'wish' | 'admin';
 
-export default function App() {
-  const [currentRoute, setCurrentRoute] = useState<Route>(() => {
-    if (typeof window !== 'undefined') {
-      const path = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
-      if (path === 'display') return 'display';
-      if (path === 'wish') return 'wish';
-      if (path === 'admin') return 'admin';
-    }
-    return 'home';
-  });
+function resolveRouteFromUrl(): Route {
+  if (typeof window === 'undefined') return 'home';
 
+  // 1. Check URL query parameters (?view=display or ?route=display)
+  const searchParams = new URLSearchParams(window.location.search);
+  const param = (searchParams.get('view') || searchParams.get('route') || searchParams.get('page') || '').toLowerCase();
+  if (param === 'display') return 'display';
+  if (param === 'wish') return 'wish';
+  if (param === 'admin') return 'admin';
+
+  // 2. Check URL hash (#/display, #display)
+  const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '').replace(/\/+$/, '');
+  if (hash === 'display') return 'display';
+  if (hash === 'wish') return 'wish';
+  if (hash === 'admin') return 'admin';
+
+  // 3. Check pathname (extract last segment e.g. /display or /repo/display)
+  const segments = window.location.pathname.toLowerCase().split('/').filter(Boolean);
+  const lastSegment = segments[segments.length - 1] || '';
+  if (lastSegment === 'display') return 'display';
+  if (lastSegment === 'wish') return 'wish';
+  if (lastSegment === 'admin') return 'admin';
+
+  return 'home';
+}
+
+export default function App() {
+  const [currentRoute, setCurrentRoute] = useState<Route>(() => resolveRouteFromUrl());
   const [showNavSwitcher, setShowNavSwitcher] = useState(false);
 
   // Sync route with URL bar & browser history
   const navigateTo = (route: Route) => {
     setCurrentRoute(route);
     if (typeof window !== 'undefined') {
-      const newPath = route === 'home' ? '/' : `/${route}`;
-      if (window.location.pathname !== newPath) {
-        window.history.pushState({ route }, '', newPath);
+      const isGitHub = window.location.hostname.includes('github.io');
+      const hasSearch = window.location.search.includes('view=') || window.location.search.includes('route=');
+      const hasHash = !!window.location.hash;
+
+      // On GitHub Pages or static host, use query param ?view= so refreshing or direct opening never triggers 404
+      if (isGitHub || hasSearch || hasHash) {
+        const url = new URL(window.location.href);
+        if (route === 'home') {
+          url.searchParams.delete('view');
+          url.searchParams.delete('route');
+          url.hash = '';
+        } else {
+          url.searchParams.set('view', route);
+        }
+        window.history.pushState({ route }, '', url.toString());
+      } else {
+        const newPath = route === 'home' ? '/' : `/${route}`;
+        if (window.location.pathname !== newPath) {
+          window.history.pushState({ route }, '', newPath);
+        }
       }
     }
   };
 
   useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      const path = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
-      if (path === 'display') setCurrentRoute('display');
-      else if (path === 'wish') setCurrentRoute('wish');
-      else if (path === 'admin') setCurrentRoute('admin');
-      else setCurrentRoute('home');
+    const handleUrlChange = () => {
+      setCurrentRoute(resolveRouteFromUrl());
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
   }, []);
 
   return (
