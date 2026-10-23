@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import confetti from 'canvas-confetti';
-import { Send, RotateCcw, CheckCircle2, AlertCircle, Tv, Sparkles } from 'lucide-react';
+import { Send, RotateCcw, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { api } from '../services/api';
 
 interface MobileWishSubmissionProps {
@@ -209,7 +209,7 @@ export const MobileWishSubmission: React.FC<MobileWishSubmissionProps> = ({
             </div>
 
             {/* Action buttons */}
-            <div className="space-y-3 pt-2">
+            <div className="pt-2">
               <button
                 type="button"
                 onClick={handleReset}
@@ -218,17 +218,6 @@ export const MobileWishSubmission: React.FC<MobileWishSubmissionProps> = ({
                 <RotateCcw className="w-4 h-4 text-white" />
                 <span>GỬI ĐIỀU ƯỚC KHÁC</span>
               </button>
-
-              {onNavigateToDisplay && (
-                <button
-                  type="button"
-                  onClick={onNavigateToDisplay}
-                  className="w-full py-3 px-6 rounded-xl font-semibold text-xs text-[#92400E] hover:text-[#B45309] hover:bg-[#FEF3C7]/60 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Tv className="w-3.5 h-3.5 text-[#D97706]" />
-                  <span>Xem màn hình sân khấu</span>
-                </button>
-              )}
             </div>
           </div>
         )}

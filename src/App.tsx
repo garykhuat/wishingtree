@@ -105,10 +105,10 @@ export default function App() {
         />
       )}
 
-      {/* Floating Quick Route Switcher (Hidden when on display/stage screen) */}
-      {currentRoute !== 'display' && (
+      {/* Floating Quick Route Switcher (Hidden on mobile devices and on wish/display screens) */}
+      {currentRoute !== 'display' && currentRoute !== 'wish' && (
         <div
-          className="fixed bottom-3 left-3 z-50 flex items-center"
+          className="hidden md:flex fixed bottom-3 left-3 z-50 items-center"
           onMouseEnter={() => setShowNavSwitcher(true)}
           onMouseLeave={() => setShowNavSwitcher(false)}
         >
@@ -140,11 +140,7 @@ export default function App() {
 
             <button
               onClick={() => navigateTo('wish')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer ${
-                currentRoute === 'wish'
-                  ? 'bg-[#174B35] text-[#4ADE80] font-bold'
-                  : 'text-white/60 hover:text-white hover:bg-white/10'
-              }`}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer text-white/60 hover:text-white hover:bg-white/10"
               title="Gửi điều ước di động (/wish)"
             >
               <Smartphone className="w-3 h-3" />
