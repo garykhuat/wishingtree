@@ -1,0 +1,6 @@
+{
+  "name": "Wishing Tree – Cây Trà Nguyện Ước",
+  "description": "Nền tảng cây trà nguyện ước tương tác thời gian thực cho sự kiện sân khấu LED và thiết bị di động",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-tea-green: #16A34A;
+    --color-forest-green: #15803D;
+    --color-bright-tea: #22C55E;
+    --color-spring-bud: #4ADE80;
+    --color-warm-gold: #E8C66A;
+    --color-light-cream: #F7F5EB;
+    --color-sky-blue: #B9DDEB;
+    --color-dark-bg: #092015;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: var(--color-dark-bg);
+    color: var(--color-light-cream);
+  }
+
+  .font-display {
+    font-family: 'Playfair Display', 'Cormorant Garamond', Georgia, serif;
+  }
+
+  .font-serif-elegant {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+  }
+}
+
+/* Custom scrollbars for live stage feed */
+.stage-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.stage-scrollbar::-webkit-scrollbar-track {
+  background: rgba(23, 75, 53, 0.2);
+  border-radius: 4px;
+}
+.stage-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(215, 174, 72, 0.35);
+  border-radius: 4px;
+}
+.stage-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(215, 174, 72, 0.6);
+}
+
+/* Atmospheric glow and sway keyframes */
+@keyframes leafSway {
+  0%, 100% {
+    transform: rotate(var(--base-rot, 0deg)) scale(1);
+  }
+  50% {
+    transform: rotate(calc(var(--base-rot, 0deg) + 2.5deg)) scale(1.02);
+  }
+}
+
+@keyframes goldPulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(215, 174, 72, 0.6)) brightness(1.2);
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(215, 174, 72, 0.95)) brightness(1.4);
+  }
+}
+
+@keyframes mistFloat {
+  0% {
+    transform: translateX(-5%);
+  }
+  50% {
+    transform: translateX(5%);
+  }
+  100% {
+    transform: translateX(-5%);
+  }
+}
+
+.animate-leaf-sway {
+  animation: leafSway 6s ease-in-out infinite;
+}
+
+.animate-gold-pulse {
+  animation: goldPulse 2s ease-in-out infinite;
+}
+
+.animate-mist-slow {
+  animation: mistFloat 30s ease-in-out infinite;
+}
