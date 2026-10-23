@@ -1,0 +1,51 @@
+{
+  "entities": {
+    "Wish": {
+      "title": "Wish",
+      "description": "A wish leaf submitted for the ancient tea tree",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "message_content": { "type": "string", "maxLength": 500 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected", "hidden"]
+        },
+        "approved_at": { "type": "string" },
+        "leaf_x": { "type": "number" },
+        "leaf_y": { "type": "number" },
+        "leaf_rotation": { "type": "number" },
+        "leaf_scale": { "type": "number" },
+        "leaf_shade": { "type": "number" },
+        "displayed_at": { "type": "string" }
+      },
+      "required": ["message_content", "created_at", "status", "leaf_x", "leaf_y"]
+    },
+    "EventSettings": {
+      "title": "EventSettings",
+      "description": "Global event configuration for Wishing Tree",
+      "type": "object",
+      "properties": {
+        "event_title": { "type": "string" },
+        "event_subtitle": { "type": "string" },
+        "moderation_enabled": { "type": "boolean" },
+        "submissions_enabled": { "type": "boolean" },
+        "theme_settings": { "type": "object" },
+        "display_settings": { "type": "object" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["moderation_enabled", "submissions_enabled", "updated_at"]
+    }
+  },
+  "firestore": {
+    "/wishes/{wishId}": {
+      "schema": "Wish",
+      "description": "Collection of all wishes submitted to the wishing tree"
+    },
+    "/settings/{settingsId}": {
+      "schema": "EventSettings",
+      "description": "Event settings document"
+    }
+  }
+}

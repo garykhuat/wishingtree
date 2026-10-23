@@ -1,29 +1,111 @@
 import { useEffect, useRef, useState } from 'react';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from './firebase';
+import { Wish, EventSettings } from '../types';
 
 type WebSocketEventHandler = (payload: any) => void;
 
 class RealtimeManager {
   private ws: WebSocket | null = null;
   private listeners: Map<string, Set<WebSocketEventHandler>> = new Map();
-  private reconnectTimeout: any = null;
   private isIntentionalClose = false;
-  private reconnectAttempts = 0;
+  private hasInitializedFirestore = false;
+  private knownWishIds: Set<string> = new Set();
+  private isFirstSnapshot = true;
 
   constructor() {
-    this.connect();
+    this.initFirestoreRealtime();
+    this.initWebSocketFallback();
   }
 
-  private connect() {
-    if (typeof window === 'undefined') return;
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+  // Firestore real-time listener (Native, works everywhere including GitHub Pages!)
+  private initFirestoreRealtime() {
+    if (!isFirebaseConfigured || this.hasInitializedFirestore) return;
+    this.hasInitializedFirestore = true;
 
     try {
+      // 1. Listen to Wishes collection
+      const wishesCol = collection(db, 'wishes');
+      onSnapshot(
+        wishesCol,
+        (snapshot) => {
+          if (this.isFirstSnapshot) {
+            // Seed known IDs so initial load doesn't trigger "new wish" sound/pulse for all
+            snapshot.docs.forEach((d) => this.knownWishIds.add(d.id));
+            this.isFirstSnapshot = false;
+            return;
+          }
+
+          const approvedCount = snapshot.docs.filter((d) => (d.data() as Wish).status === 'approved').length;
+
+          snapshot.docChanges().forEach((change) => {
+            const wish = change.doc.data() as Wish;
+
+            if (change.type === 'added') {
+              this.knownWishIds.add(wish.id);
+              if (wish.status === 'approved') {
+                this.emit('wish:new_approved', {
+                  wish,
+                  totalApproved: approvedCount,
+                });
+              } else {
+                this.emit('wish:new_pending', {
+                  wish,
+                  totalPending: snapshot.docs.filter((d) => (d.data() as Wish).status === 'pending').length,
+                });
+              }
+            } else if (change.type === 'modified') {
+              this.emit('wish:status_changed', {
+                wish,
+                totalApproved: approvedCount,
+              });
+            } else if (change.type === 'removed') {
+              this.knownWishIds.delete(wish.id);
+              this.emit('wish:deleted', { id: wish.id });
+            }
+          });
+        },
+        (error) => {
+          console.warn('Firestore real-time listener notice:', error.message);
+        }
+      );
+
+      // 2. Listen to Settings document
+      const settingsDoc = doc(db, 'settings', 'default');
+      onSnapshot(
+        settingsDoc,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            this.emit('settings:updated', snapshot.data() as EventSettings);
+          }
+        },
+        (error) => {
+          console.warn('Firestore settings listener notice:', error.message);
+        }
+      );
+
+      // Firestore is active and real-time
+      this.emit('connection:change', { connected: true });
+    } catch (err) {
+      console.warn('Could not initialize Firestore realtime listener:', err);
+    }
+  }
+
+  // WebSocket fallback for local development or custom proxy
+  private initWebSocketFallback() {
+    if (typeof window === 'undefined') return;
+
+    // Do not attempt WS if running on GitHub Pages
+    if (window.location.hostname.includes('github.io')) {
+      return;
+    }
+
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        this.reconnectAttempts = 0;
         this.emit('connection:change', { connected: true });
       };
 
@@ -33,35 +115,24 @@ class RealtimeManager {
           if (msg && msg.type) {
             this.emit(msg.type, msg.data);
           }
-        } catch (e) {
-          console.error('Failed to parse WS message:', e);
+        } catch {
+          // ignore
         }
       };
 
       this.ws.onclose = () => {
-        this.emit('connection:change', { connected: false });
-        if (!this.isIntentionalClose) {
-          this.scheduleReconnect();
+        // Keep connected state if Firestore is active
+        if (!isFirebaseConfigured) {
+          this.emit('connection:change', { connected: false });
         }
       };
 
-      this.ws.onerror = (err) => {
-        console.warn('WebSocket error, waiting to reconnect:', err);
-        this.ws?.close();
+      this.ws.onerror = () => {
+        // Silent failure if on static host
       };
-    } catch (e) {
-      console.error('WebSocket connection error:', e);
-      this.scheduleReconnect();
+    } catch {
+      // ignore
     }
-  }
-
-  private scheduleReconnect() {
-    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-    const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 8000);
-    this.reconnectAttempts++;
-    this.reconnectTimeout = setTimeout(() => {
-      this.connect();
-    }, delay);
   }
 
   public on(event: string, handler: WebSocketEventHandler) {
@@ -74,7 +145,7 @@ class RealtimeManager {
     };
   }
 
-  private emit(event: string, data: any) {
+  public emit(event: string, data: any) {
     const handlers = this.listeners.get(event);
     if (handlers) {
       handlers.forEach((h) => h(data));
@@ -82,7 +153,7 @@ class RealtimeManager {
   }
 
   public isConnected(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+    return isFirebaseConfigured || (this.ws !== null && this.ws.readyState === WebSocket.OPEN);
   }
 }
 
