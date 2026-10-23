@@ -29,8 +29,20 @@ export const AncientTeaTree: React.FC<AncientTeaTreeProps> = ({
 }) => {
   const [flyingLeaves, setFlyingLeaves] = useState<FlyingLeaf[]>([]);
   const [glowingLeafIds, setGlowingLeafIds] = useState<Set<string>>(new Set());
+  const [hoveredWishId, setHoveredWishId] = useState<string | null>(null);
   const prevWishesRef = useRef<Map<string, Wish>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Render hovered & selected leaves last so they appear on top without clipping
+  const sortedWishes = useMemo(() => {
+    return [...wishes].sort((a, b) => {
+      if (a.id === selectedWishId) return 2;
+      if (b.id === selectedWishId) return -2;
+      if (a.id === hoveredWishId) return 1;
+      if (b.id === hoveredWishId) return -1;
+      return 0;
+    });
+  }, [wishes, selectedWishId, hoveredWishId]);
 
   // Coordinates are generated to fit the lush wide dome canopy of the ancient tea tree
   // (spanning X: 26.5% to 89.5% and Y: 7.2% to 55.5% across the panoramic background)
@@ -171,7 +183,7 @@ export const AncientTeaTree: React.FC<AncientTeaTreeProps> = ({
   }, []);
 
   // Leaf color helper with fresh, vibrant, brighter tea greens ("tươi sáng hơn")
-  const getLeafColors = (shade: number, isGlowing: boolean, isSelected: boolean) => {
+  const getLeafColors = (shade: number, isGlowing: boolean, isSelected: boolean, isHovered: boolean = false) => {
     if (isSelected) {
       return {
         fill: '#FFFDE7', // Brilliant radiant golden ivory for standout selection
@@ -179,6 +191,15 @@ export const AncientTeaTree: React.FC<AncientTeaTreeProps> = ({
         glow: 'rgba(245, 158, 11, 1)',
         midrib: '#D97706',
         vein: '#B45309',
+      };
+    }
+    if (isHovered) {
+      return {
+        fill: '#FEF9C3', // Warm luminous golden-ivory tint on hover
+        stroke: '#FBBF24',
+        glow: 'rgba(251, 191, 36, 0.95)',
+        midrib: '#D97706',
+        vein: '#F59E0B',
       };
     }
     if (isGlowing) {
@@ -242,6 +263,14 @@ export const AncientTeaTree: React.FC<AncientTeaTreeProps> = ({
           {/* Glow Filters */}
           <filter id="leaf-green-aura" x="-60%" y="-60%" width="220%" height="220%">
             <feGaussianBlur in="SourceGraphic" stdDeviation="4.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          <filter id="leaf-hover-glow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -332,35 +361,49 @@ export const AncientTeaTree: React.FC<AncientTeaTreeProps> = ({
 
         {/* Wish Leaves Layer: Distinct, prominent tea leaves blooming on the ancient tree */}
         <g id="layer-wish-leaves">
-          {wishes.map((w, idx) => {
+          {sortedWishes.map((w) => {
             const mapped = getMappedCoordinates(w.leaf_x, w.leaf_y);
             const isGlowing = glowingLeafIds.has(w.id);
             const isSelected = selectedWishId === w.id;
-            const colors = getLeafColors(w.leaf_shade, isGlowing, isSelected);
+            const isHovered = hoveredWishId === w.id;
+            const colors = getLeafColors(w.leaf_shade, isGlowing, isSelected, isHovered);
 
             const cx = (mapped.x / 100) * 1000;
             const cy = (mapped.y / 100) * 650;
             const baseScale = w.leaf_scale || 1.0;
             const currentScale = isSelected
               ? baseScale * 2.2
+              : isHovered
+              ? baseScale * 1.45
               : isGlowing
-              ? baseScale * 1.4
+              ? baseScale * 1.35
               : baseScale * 1.02;
 
             return (
               <g
                 key={w.id}
                 transform={`translate(${cx}, ${cy}) rotate(${w.leaf_rotation}) scale(${currentScale})`}
-                className="cursor-pointer transition-transform duration-300 hover:scale-150"
+                className="cursor-pointer"
+                onMouseEnter={() => setHoveredWishId(w.id)}
+                onMouseLeave={() => setHoveredWishId((cur) => (cur === w.id ? null : cur))}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectWish?.(w);
                 }}
-                filter={isSelected ? 'url(#selected-beacon-glow)' : 'url(#leaf-green-aura)'}
+                filter={
+                  isSelected
+                    ? 'url(#selected-beacon-glow)'
+                    : isHovered
+                    ? 'url(#leaf-hover-glow)'
+                    : 'url(#leaf-green-aura)'
+                }
                 style={{
-                  transition: 'filter 0.4s ease-out, transform 0.25s ease-out',
+                  transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
                 }}
               >
+                {/* Generous stable hit area preventing any edge hover jitter */}
+                <circle r="30" fill="transparent" pointerEvents="all" />
+
                 {/* PROMINENT GOLDEN LOCATOR BEACON WHEN SELECTED */}
                 {isSelected && (
                   <g pointerEvents="none">
@@ -442,15 +485,8 @@ export const AncientTeaTree: React.FC<AncientTeaTreeProps> = ({
                   </circle>
                 )}
 
-                {/* Render enlarged tea leaf with custom stroke & vein colors */}
-                <g
-                  className={idx % 4 === 0 ? 'animate-leaf-sway' : ''}
-                  style={{
-                    filter: isSelected
-                      ? 'drop-shadow(0 0 15px rgba(245,158,11,0.9)) drop-shadow(0 2px 8px rgba(0,0,0,0.6))'
-                      : 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))',
-                  }}
-                >
+                {/* Render tea leaf cleanly with custom stroke & vein colors */}
+                <g>
                   <use
                     href="#enlarged-tea-leaf"
                     fill={colors.fill}
@@ -460,7 +496,7 @@ export const AncientTeaTree: React.FC<AncientTeaTreeProps> = ({
                   <path
                     d="M 0,-24 L 0,24"
                     stroke={colors.midrib}
-                    strokeWidth={isSelected ? '2.2' : '1.6'}
+                    strokeWidth={isSelected ? '2.2' : isHovered ? '2.0' : '1.6'}
                     fill="none"
                     strokeLinecap="round"
                   />
@@ -469,7 +505,7 @@ export const AncientTeaTree: React.FC<AncientTeaTreeProps> = ({
                     d="M 0,-13 L 5.5,-18 M 0,-2 L 7,-7 M 0,9 L 5.5,4 M 0,18 L 4,14
                        M 0,-13 L -5.5,-18 M 0,-2 L -7,-7 M 0,9 L -5.5,4 M 0,18 L -4,14"
                     stroke={colors.vein}
-                    strokeWidth={isSelected ? '1.5' : '1.1'}
+                    strokeWidth={isSelected ? '1.5' : isHovered ? '1.3' : '1.1'}
                     fill="none"
                     strokeLinecap="round"
                     opacity="0.95"
