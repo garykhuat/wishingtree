@@ -201,11 +201,11 @@ export const MobileWishSubmission: React.FC<MobileWishSubmissionProps> = ({
               <h2 className="text-xl sm:text-2xl font-bold text-[#002B49] font-display">
                 ĐIỀU ƯỚC CỦA BẠN ĐÃ ĐƯỢC GỬI THÀNH CÔNG!
               </h2>
-              <p className="text-sm text-[#4B5563] leading-relaxed max-w-xs mx-auto">
-                {!submittedWish.moderation_enabled
-                  ? 'Điều ước của bạn đang trở thành một chiếc lá trên Cây Trà Nguyện Ước.'
-                  : 'Điều ước của bạn đã được ghi nhận và sẽ xuất hiện sau khi được duyệt.'}
-              </p>
+              {!submittedWish.moderation_enabled && (
+                <p className="text-sm text-[#4B5563] leading-relaxed max-w-xs mx-auto">
+                  Điều ước của bạn đang trở thành một chiếc lá trên Cây Trà Nguyện Ước.
+                </p>
+              )}
             </div>
 
             {/* Action buttons */}
