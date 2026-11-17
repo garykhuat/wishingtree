@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShieldCheck,
   Search,
@@ -72,6 +72,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Bulk / Batch Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const lastSelectedIdRef = useRef<string | null>(null);
   const [isBatchLoading, setIsBatchLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -225,6 +226,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const updatedMap = new Map(updated.map((w) => [w.id, w]));
       setWishes((prev) => prev.map((w) => updatedMap.get(w.id) || w));
       setSelectedIds(new Set());
+      lastSelectedIdRef.current = null;
       const settingsRes = await api.getSettings();
       setStats(settingsRes.stats);
       const label = newStatus === 'approved' ? 'duyệt' : newStatus === 'rejected' ? 'từ chối' : 'ẩn';
@@ -247,6 +249,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await api.batchDeleteWishes(ids);
       setWishes((prev) => prev.filter((w) => !selectedIds.has(w.id)));
       setSelectedIds(new Set());
+      lastSelectedIdRef.current = null;
       setShowBatchDeleteConfirm(false);
       const settingsRes = await api.getSettings();
       setStats(settingsRes.stats);
@@ -329,6 +332,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return matchesSearch && matchesStatus;
     });
   }, [wishes, searchTerm, statusFilter]);
+
+  // Toggle single wish or Shift+click range selection across filteredWishes
+  const handleToggleSelectWish = (id: string, index: number, isShiftKey: boolean) => {
+    if (isShiftKey && typeof window !== 'undefined') {
+      window.getSelection()?.removeAllRanges();
+    }
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const shouldSelect = !prev.has(id);
+
+      if (isShiftKey && lastSelectedIdRef.current) {
+        const lastIndex = filteredWishes.findIndex((item) => item.id === lastSelectedIdRef.current);
+        if (lastIndex !== -1) {
+          const start = Math.min(lastIndex, index);
+          const end = Math.max(lastIndex, index);
+          for (let i = start; i <= end; i++) {
+            if (shouldSelect) {
+              next.add(filteredWishes[i].id);
+            } else {
+              next.delete(filteredWishes[i].id);
+            }
+          }
+          return next;
+        }
+      }
+
+      if (shouldSelect) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+
+    lastSelectedIdRef.current = id;
+  };
 
   // If not logged in, show secure login prompt
   if (!isAuthenticated) {
@@ -679,7 +719,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
 
               <button
-                onClick={() => setSelectedIds(new Set())}
+                onClick={() => {
+                  setSelectedIds(new Set());
+                  lastSelectedIdRef.current = null;
+                }}
                 className="px-2.5 py-1.5 text-xs text-white/70 hover:text-white transition-colors cursor-pointer"
               >
                 Bỏ chọn
@@ -694,7 +737,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-[#081810] text-white/70 border-b border-white/10">
                 <tr>
-                  <th className="py-3 px-4 w-12 text-center">
+                  <th className="py-3 px-4 w-12 text-center select-none">
                     <input
                       type="checkbox"
                       checked={filteredWishes.length > 0 && filteredWishes.every((w) => selectedIds.has(w.id))}
@@ -702,6 +745,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const allSelected = filteredWishes.length > 0 && filteredWishes.every((w) => selectedIds.has(w.id));
                         if (allSelected) {
                           setSelectedIds(new Set());
+                          lastSelectedIdRef.current = null;
                         } else {
                           setSelectedIds(new Set(filteredWishes.map((w) => w.id)));
                         }
@@ -724,7 +768,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredWishes.map((w) => {
+                  filteredWishes.map((w, idx) => {
                     const isSelected = selectedIds.has(w.id);
                     const timeStr = new Date(w.created_at).toLocaleString('vi-VN', {
                       hour: '2-digit',
@@ -742,20 +786,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             : 'hover:bg-[#102B1E]/60'
                         }`}
                       >
-                        {/* Checkbox */}
-                        <td className="py-3.5 px-4 text-center">
+                        {/* Checkbox (supports Shift+click range selection) */}
+                        <td
+                          className="py-3.5 px-4 text-center select-none cursor-pointer"
+                          onClick={(e) => handleToggleSelectWish(w.id, idx, e.shiftKey)}
+                          title="Nhấn để chọn, giữ Shift + nhấn để chọn hàng loạt theo dải"
+                        >
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => {
-                              setSelectedIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(w.id)) next.delete(w.id);
-                                else next.add(w.id);
-                                return next;
-                              });
+                            onChange={() => {}}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleSelectWish(w.id, idx, e.shiftKey);
                             }}
                             className="w-4 h-4 rounded accent-[#22C55E] cursor-pointer"
+                            title="Nhấn để chọn, giữ Shift + nhấn để chọn hàng loạt theo dải"
                           />
                         </td>
 
