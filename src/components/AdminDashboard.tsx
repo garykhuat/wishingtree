@@ -70,9 +70,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
-  // Bulk / Batch Selection
+  // Bulk / Batch Selection (Gmail-style anchor + base snapshot)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const lastSelectedIdRef = useRef<string | null>(null);
+  const lastAnchorRef = useRef<{ id: string; select: boolean } | null>(null);
+  const baseSelectionRef = useRef<Set<string>>(new Set());
   const [isBatchLoading, setIsBatchLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -128,6 +129,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   }, [isAuthenticated]);
 
+  // Keep statistics automatically synced with wishes list
+  useEffect(() => {
+    setStats(api.calculateStats(wishes));
+  }, [wishes]);
+
   // Real-time updates for Admin
   useRealtimeEvent('wish:new_approved', (data: { wish: Wish }) => {
     if (!data?.wish) return;
@@ -136,21 +142,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (exists) return prev.map((w) => (w.id === data.wish.id ? data.wish : w));
       return [data.wish, ...prev];
     });
-    setStats((prev) => ({
-      ...prev,
-      total: prev.total + 1,
-      approved: prev.approved + 1,
-    }));
   });
 
   useRealtimeEvent('wish:new_pending', (data: { wish: Wish }) => {
     if (!data?.wish) return;
-    setWishes((prev) => [data.wish, ...prev]);
-    setStats((prev) => ({
-      ...prev,
-      total: prev.total + 1,
-      pending: prev.pending + 1,
-    }));
+    setWishes((prev) => {
+      const exists = prev.some((w) => w.id === data.wish.id);
+      if (exists) return prev.map((w) => (w.id === data.wish.id ? data.wish : w));
+      return [data.wish, ...prev];
+    });
   });
 
   useRealtimeEvent('wish:status_changed', (data: { wish: Wish }) => {
@@ -158,6 +158,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setWishes((prev) =>
       prev.map((w) => (w.id === data.wish.id ? data.wish : w))
     );
+  });
+
+  useRealtimeEvent('wish:deleted', (data: { id: string }) => {
+    if (!data?.id) return;
+    setWishes((prev) => prev.filter((w) => w.id !== data.id));
+    setSelectedIds((prev) => {
+      if (!prev.has(data.id)) return prev;
+      const next = new Set(prev);
+      next.delete(data.id);
+      return next;
+    });
   });
 
   useRealtimeEvent('wishes:batch_updated', (data: { updated: Wish[] }) => {
@@ -226,7 +237,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const updatedMap = new Map(updated.map((w) => [w.id, w]));
       setWishes((prev) => prev.map((w) => updatedMap.get(w.id) || w));
       setSelectedIds(new Set());
-      lastSelectedIdRef.current = null;
+      lastAnchorRef.current = null;
+      baseSelectionRef.current = new Set();
       const settingsRes = await api.getSettings();
       setStats(settingsRes.stats);
       const label = newStatus === 'approved' ? 'duyệt' : newStatus === 'rejected' ? 'từ chối' : 'ẩn';
@@ -249,7 +261,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await api.batchDeleteWishes(ids);
       setWishes((prev) => prev.filter((w) => !selectedIds.has(w.id)));
       setSelectedIds(new Set());
-      lastSelectedIdRef.current = null;
+      lastAnchorRef.current = null;
+      baseSelectionRef.current = new Set();
       setShowBatchDeleteConfirm(false);
       const settingsRes = await api.getSettings();
       setStats(settingsRes.stats);
@@ -333,41 +346,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   }, [wishes, searchTerm, statusFilter]);
 
-  // Toggle single wish or Shift+click range selection across filteredWishes
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    lastAnchorRef.current = null;
+    baseSelectionRef.current = new Set();
+  };
+
+  // Toggle single wish or Gmail-style Shift+Click range selection across filteredWishes
   const handleToggleSelectWish = (id: string, index: number, isShiftKey: boolean) => {
     if (isShiftKey && typeof window !== 'undefined') {
       window.getSelection()?.removeAllRanges();
     }
 
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      const shouldSelect = !prev.has(id);
+    if (isShiftKey && lastAnchorRef.current) {
+      const anchorIndex = filteredWishes.findIndex(
+        (item) => item.id === lastAnchorRef.current!.id
+      );
 
-      if (isShiftKey && lastSelectedIdRef.current) {
-        const lastIndex = filteredWishes.findIndex((item) => item.id === lastSelectedIdRef.current);
-        if (lastIndex !== -1) {
-          const start = Math.min(lastIndex, index);
-          const end = Math.max(lastIndex, index);
-          for (let i = start; i <= end; i++) {
-            if (shouldSelect) {
-              next.add(filteredWishes[i].id);
-            } else {
-              next.delete(filteredWishes[i].id);
-            }
+      if (anchorIndex !== -1) {
+        const start = Math.min(anchorIndex, index);
+        const end = Math.max(anchorIndex, index);
+        const targetSelect = lastAnchorRef.current.select;
+        const next = new Set(baseSelectionRef.current);
+
+        for (let i = start; i <= end; i++) {
+          if (targetSelect) {
+            next.add(filteredWishes[i].id);
+          } else {
+            next.delete(filteredWishes[i].id);
           }
-          return next;
         }
-      }
 
-      if (shouldSelect) {
-        next.add(id);
-      } else {
-        next.delete(id);
+        setSelectedIds(next);
+        return;
       }
-      return next;
-    });
+    }
 
-    lastSelectedIdRef.current = id;
+    const next = new Set(selectedIds);
+    const nextSelect = !next.has(id);
+    if (nextSelect) {
+      next.add(id);
+    } else {
+      next.delete(id);
+    }
+    lastAnchorRef.current = { id, select: nextSelect };
+    baseSelectionRef.current = new Set(next);
+    setSelectedIds(next);
   };
 
   // If not logged in, show secure login prompt
@@ -719,10 +743,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
 
               <button
-                onClick={() => {
-                  setSelectedIds(new Set());
-                  lastSelectedIdRef.current = null;
-                }}
+                onClick={clearSelection}
                 className="px-2.5 py-1.5 text-xs text-white/70 hover:text-white transition-colors cursor-pointer"
               >
                 Bỏ chọn
@@ -733,26 +754,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Wishes Table */}
         <div className="bg-[#0B1E15] border border-white/10 rounded-xl overflow-hidden shadow-xl">
+          <div className="px-4 py-2 bg-[#081810]/70 border-b border-white/5 flex items-center justify-between text-[11px] text-white/50">
+            <span>
+              Hiển thị <strong className="text-white/80 tabular-nums">{filteredWishes.length}</strong> điều ước
+            </span>
+            <span className="hidden sm:inline">
+              Mẹo: Tick chọn 1 dòng rồi giữ <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 font-mono text-[10px] border border-white/15">Shift</kbd> + nhấn dòng khác để chọn cả khoảng (giống Gmail)
+            </span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#081810] text-white/70 border-b border-white/10">
                 <tr>
                   <th className="py-3 px-4 w-12 text-center select-none">
-                    <input
-                      type="checkbox"
-                      checked={filteredWishes.length > 0 && filteredWishes.every((w) => selectedIds.has(w.id))}
-                      onChange={() => {
-                        const allSelected = filteredWishes.length > 0 && filteredWishes.every((w) => selectedIds.has(w.id));
-                        if (allSelected) {
-                          setSelectedIds(new Set());
-                          lastSelectedIdRef.current = null;
-                        } else {
-                          setSelectedIds(new Set(filteredWishes.map((w) => w.id)));
-                        }
-                      }}
-                      className="w-4 h-4 rounded accent-[#22C55E] cursor-pointer"
-                      title="Chọn tất cả điều ước đang hiển thị"
-                    />
+                    {(() => {
+                      const allSelected = filteredWishes.length > 0 && filteredWishes.every((w) => selectedIds.has(w.id));
+                      return (
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={allSelected}
+                          onClick={() => {
+                            if (allSelected) {
+                              clearSelection();
+                            } else {
+                              const allSet = new Set(filteredWishes.map((w) => w.id));
+                              setSelectedIds(allSet);
+                              baseSelectionRef.current = new Set(allSet);
+                              lastAnchorRef.current = filteredWishes.length > 0
+                                ? { id: filteredWishes[0].id, select: true }
+                                : null;
+                            }
+                          }}
+                          className={`w-4 h-4 rounded inline-flex items-center justify-center transition-colors cursor-pointer border align-middle ${
+                            allSelected
+                              ? 'bg-[#22C55E] border-[#4ADE80] text-[#051B11] shadow-sm shadow-[#22C55E]/30'
+                              : 'bg-[#081810] border-white/30 hover:border-[#4ADE80]/80'
+                          }`}
+                          title="Chọn tất cả điều ước đang hiển thị"
+                        >
+                          {allSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </button>
+                      );
+                    })()}
                   </th>
                   <th className="py-3 px-3 font-semibold w-32">Thời gian</th>
                   <th className="py-3 px-4 font-semibold">Nội dung điều ước</th>
@@ -780,29 +824,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     return (
                       <tr
                         key={w.id}
+                        onMouseDown={(e) => {
+                          if (e.shiftKey) e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                          if (e.shiftKey) {
+                            if ((e.target as HTMLElement).closest('button')) return;
+                            handleToggleSelectWish(w.id, idx, true);
+                          }
+                        }}
                         className={`transition-colors ${
                           isSelected
                             ? 'bg-[#144A32]/60'
                             : 'hover:bg-[#102B1E]/60'
                         }`}
                       >
-                        {/* Checkbox (supports Shift+click range selection) */}
+                        {/* Checkbox (Gmail-style Shift+click range selection) */}
                         <td
                           className="py-3.5 px-4 text-center select-none cursor-pointer"
-                          onClick={(e) => handleToggleSelectWish(w.id, idx, e.shiftKey)}
-                          title="Nhấn để chọn, giữ Shift + nhấn để chọn hàng loạt theo dải"
+                          onMouseDown={(e) => {
+                            if (e.shiftKey) e.preventDefault();
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelectWish(w.id, idx, e.shiftKey);
+                          }}
+                          title="Nhấn để chọn, giữ Shift + nhấn để chọn hàng loạt theo khoảng"
                         >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {}}
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={isSelected}
+                            onMouseDown={(e) => {
+                              if (e.shiftKey) e.preventDefault();
+                            }}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleSelectWish(w.id, idx, e.shiftKey);
                             }}
-                            className="w-4 h-4 rounded accent-[#22C55E] cursor-pointer"
-                            title="Nhấn để chọn, giữ Shift + nhấn để chọn hàng loạt theo dải"
-                          />
+                            className={`w-4 h-4 rounded inline-flex items-center justify-center transition-colors cursor-pointer border align-middle ${
+                              isSelected
+                                ? 'bg-[#22C55E] border-[#4ADE80] text-[#051B11] shadow-sm shadow-[#22C55E]/30'
+                                : 'bg-[#081810] border-white/30 hover:border-[#4ADE80]/80'
+                            }`}
+                            title="Nhấn để chọn, giữ Shift + nhấn để chọn hàng loạt theo khoảng"
+                          >
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                          </button>
                         </td>
 
                         {/* Time */}
@@ -1056,7 +1124,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Xác nhận đặt lại dữ liệu?
               </h3>
               <p className="text-xs text-white/60 leading-relaxed">
-                Hành động này sẽ xóa các điều ước đã gửi và khôi phục về danh sách điều ước mẫu ban đầu.
+                Hành động này sẽ xóa toàn bộ các điều ước hiện có và đưa danh sách về trạng thái trống ban đầu.
               </p>
             </div>
 

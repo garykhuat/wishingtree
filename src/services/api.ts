@@ -8,11 +8,9 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
   writeBatch,
-  limit,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase';
+import { db, isFirebaseConfigured, OperationType, handleFirestoreError } from './firebase';
 import { Wish, EventSettings, WishStats } from '../types';
 import { calculateLeafPosition } from '../utils/leafPosition';
 
@@ -34,23 +32,9 @@ const DEFAULT_SETTINGS: EventSettings = {
   updated_at: new Date().toISOString(),
 };
 
-const INITIAL_SAMPLE_WISHES: string[] = [
-  "Chúc mừng đại lễ kỷ niệm thành công rực rỡ, thương hiệu ngày càng vươn xa toàn cầu!",
-  "Kính chúc ban lãnh đạo và toàn thể anh chị em luôn dồi dào sức khỏe, nhiệt huyết và đoàn kết.",
-  "Biết ơn những người đồng đội tuyệt vời đã luôn sát cánh, cùng nhau vượt qua mọi thử thách.",
-  "Mỗi chiếc lá là một niềm tin son sắt, chúc công ty luôn tràn đầy sức sống và bứt phá ngoạn mục!",
-  "Cảm ơn vì một năm đầy nỗ lực. Chúc gia đình chúng ta luôn bình an, thịnh vượng và hạnh phúc.",
-  "Chúc cho những khát vọng của chúng ta hôm nay sẽ nở hoa kết trái rực rỡ trong tương lai.",
-  "Một hành trình diệu kỳ, tự hào là một phần của đại gia đình thân yêu này!",
-  "Nguyện ước bình an, may mắn và mọi điều tốt đẹp nhất đến với tất cả các thành viên.",
-  "Vững bước tiên phong, kiến tạo giá trị bền vững và mang lại hạnh phúc cho cộng đồng.",
-  "Gửi gắm vào cây trà cổ thụ lời tri ân sâu sắc nhất tới tất cả những ai đã cống hiến âm thầm.",
-  "Chúc năm mới khởi sắc thăng hoa, doanh thu vượt đỉnh, vạn sự hanh thông!",
-  "Đoàn kết là sức mạnh, cùng nhau ta có thể chạm tới những đỉnh cao mới.",
-  "Tâm huyết trao đi, yêu thương nhận lại. Chúc cho tinh thần trà Việt luôn lan tỏa muôn phương.",
-  "Nguyện cho mỗi dự án mới đều thuận buồm xuôi gió, ghi dấu ấn rạng rỡ trên thị trường.",
-  "Chúc tập thể chúng ta mãi giữ vững ngọn lửa đam mê, sáng tạo và bứt phá không ngừng!"
-];
+function isPermissionError(err: unknown): boolean {
+  return err instanceof Error && err.message.toLowerCase().includes('missing or insufficient permissions');
+}
 
 export const api = {
   async getSettings(): Promise<{ settings: EventSettings; stats: WishStats }> {
@@ -69,30 +53,22 @@ export const api = {
       if (snap.exists()) {
         settings = snap.data() as EventSettings;
       } else {
-        // Initialize default settings doc in Firestore
+        // Initialize default settings doc in Firestore without creating any sample wishes
         await setDoc(settingsRef, DEFAULT_SETTINGS);
       }
 
-      // Compute stats
+      // Compute stats from existing wishes only (no auto-seeding)
       const wishesSnap = await getDocs(collection(db, 'wishes'));
       const allWishes = wishesSnap.docs.map((d) => d.data() as Wish);
-
-      // If database is completely empty on first launch, auto-seed initial wishes
-      if (allWishes.length === 0) {
-        await this.seedInitialWishes();
-        const refreshedSnap = await getDocs(collection(db, 'wishes'));
-        const refreshedWishes = refreshedSnap.docs.map((d) => d.data() as Wish);
-        return {
-          settings,
-          stats: this.calculateStats(refreshedWishes),
-        };
-      }
 
       return {
         settings,
         stats: this.calculateStats(allWishes),
       };
     } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.GET, 'settings/default');
+      }
       console.warn('Failed to load settings from Firestore, fallback to defaults:', err);
       return {
         settings: DEFAULT_SETTINGS,
@@ -112,18 +88,25 @@ export const api = {
   },
 
   async updateSettings(partial: Partial<EventSettings>): Promise<EventSettings> {
-    const settingsRef = doc(db, 'settings', 'default');
-    const snap = await getDoc(settingsRef);
-    const current = snap.exists() ? (snap.data() as EventSettings) : DEFAULT_SETTINGS;
+    try {
+      const settingsRef = doc(db, 'settings', 'default');
+      const snap = await getDoc(settingsRef);
+      const current = snap.exists() ? (snap.data() as EventSettings) : DEFAULT_SETTINGS;
 
-    const updated: EventSettings = {
-      ...current,
-      ...partial,
-      updated_at: new Date().toISOString(),
-    };
+      const updated: EventSettings = {
+        ...current,
+        ...partial,
+        updated_at: new Date().toISOString(),
+      };
 
-    await setDoc(settingsRef, updated);
-    return updated;
+      await setDoc(settingsRef, updated);
+      return updated;
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.WRITE, 'settings/default');
+      }
+      throw err;
+    }
   },
 
   async getApprovedWishes(): Promise<{ wishes: Wish[]; total: number }> {
@@ -137,19 +120,13 @@ export const api = {
       const snap = await getDocs(q);
       const wishes = snap.docs.map((d) => d.data() as Wish);
 
-      // If empty, auto-seed and reload
-      if (wishes.length === 0) {
-        await this.seedInitialWishes();
-        const reloadSnap = await getDocs(q);
-        const reloadWishes = reloadSnap.docs.map((d) => d.data() as Wish);
-        reloadWishes.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        return { wishes: reloadWishes, total: reloadWishes.length };
-      }
-
-      // Sort descending by created_at in client
+      // Sort descending by created_at in client (no auto-seeding when empty)
       wishes.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return { wishes, total: wishes.length };
     } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.LIST, 'wishes');
+      }
       console.warn('Error fetching approved wishes:', err);
       return { wishes: [], total: 0 };
     }
@@ -164,6 +141,9 @@ export const api = {
       wishes.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return { wishes, total: wishes.length };
     } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.LIST, 'wishes');
+      }
       console.warn('Error fetching all wishes:', err);
       return { wishes: [], total: 0 };
     }
@@ -207,8 +187,15 @@ export const api = {
       displayed_at: isApproved ? now : null,
     };
 
-    const wishDoc = doc(db, 'wishes', id);
-    await setDoc(wishDoc, newWish);
+    try {
+      const wishDoc = doc(db, 'wishes', id);
+      await setDoc(wishDoc, newWish);
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.CREATE, `wishes/${id}`);
+      }
+      throw err;
+    }
 
     return {
       success: true,
@@ -218,64 +205,92 @@ export const api = {
   },
 
   async updateWishStatus(id: string, status: Wish['status']): Promise<Wish> {
-    const wishRef = doc(db, 'wishes', id);
-    const snap = await getDoc(wishRef);
-    if (!snap.exists()) {
-      throw new Error('Không tìm thấy điều ước.');
+    try {
+      const wishRef = doc(db, 'wishes', id);
+      const snap = await getDoc(wishRef);
+      if (!snap.exists()) {
+        throw new Error('Không tìm thấy điều ước.');
+      }
+
+      const current = snap.data() as Wish;
+      const now = new Date().toISOString();
+      const updates: Partial<Wish> = {
+        status,
+        ...(status === 'approved'
+          ? {
+              approved_at: current.approved_at || now,
+              displayed_at: now,
+            }
+          : {}),
+      };
+
+      await updateDoc(wishRef, updates);
+      return { ...current, ...updates };
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.UPDATE, `wishes/${id}`);
+      }
+      throw err;
     }
-
-    const current = snap.data() as Wish;
-    const now = new Date().toISOString();
-    const updates: Partial<Wish> = {
-      status,
-      ...(status === 'approved'
-        ? {
-            approved_at: current.approved_at || now,
-            displayed_at: now,
-          }
-        : {}),
-    };
-
-    await updateDoc(wishRef, updates);
-    return { ...current, ...updates };
   },
 
   async deleteWish(id: string): Promise<boolean> {
-    const wishRef = doc(db, 'wishes', id);
-    await deleteDoc(wishRef);
-    return true;
+    try {
+      const wishRef = doc(db, 'wishes', id);
+      await deleteDoc(wishRef);
+      return true;
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.DELETE, `wishes/${id}`);
+      }
+      throw err;
+    }
   },
 
   async batchUpdateStatus(ids: string[], status: Wish['status']): Promise<Wish[]> {
-    const batch = writeBatch(db);
-    const now = new Date().toISOString();
-    const updatedList: Wish[] = [];
+    try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+      const updatedList: Wish[] = [];
 
-    for (const id of ids) {
-      const ref = doc(db, 'wishes', id);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const cur = snap.data() as Wish;
-        const upd: Partial<Wish> = {
-          status,
-          ...(status === 'approved' ? { approved_at: cur.approved_at || now, displayed_at: now } : {}),
-        };
-        batch.update(ref, upd);
-        updatedList.push({ ...cur, ...upd });
+      for (const id of ids) {
+        const ref = doc(db, 'wishes', id);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const cur = snap.data() as Wish;
+          const upd: Partial<Wish> = {
+            status,
+            ...(status === 'approved' ? { approved_at: cur.approved_at || now, displayed_at: now } : {}),
+          };
+          batch.update(ref, upd);
+          updatedList.push({ ...cur, ...upd });
+        }
       }
-    }
 
-    await batch.commit();
-    return updatedList;
+      await batch.commit();
+      return updatedList;
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.WRITE, 'wishes');
+      }
+      throw err;
+    }
   },
 
   async batchDeleteWishes(ids: string[]): Promise<string[]> {
-    const batch = writeBatch(db);
-    for (const id of ids) {
-      batch.delete(doc(db, 'wishes', id));
+    try {
+      const batch = writeBatch(db);
+      for (const id of ids) {
+        batch.delete(doc(db, 'wishes', id));
+      }
+      await batch.commit();
+      return ids;
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.DELETE, 'wishes');
+      }
+      throw err;
     }
-    await batch.commit();
-    return ids;
   },
 
   async seedWishes(count: number = 5): Promise<Wish[]> {
@@ -297,78 +312,66 @@ export const api = {
       "Đoàn kết là sức mạnh, gắn kết yêu thương kiến tạo nên những kỳ tích mới!",
     ];
 
-    const { total: currentApproved } = await this.getApprovedWishes();
-    const batch = writeBatch(db);
-    const added: Wish[] = [];
+    try {
+      const { total: currentApproved } = await this.getApprovedWishes();
+      const batch = writeBatch(db);
+      const added: Wish[] = [];
 
-    for (let i = 0; i < count; i++) {
-      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `seed_${Date.now()}_${i}`;
-      const msg = sampleMsgs[i % sampleMsgs.length];
-      const pos = calculateLeafPosition(currentApproved + i, id);
-      const now = new Date(Date.now() - (count - i) * 120000).toISOString();
+      for (let i = 0; i < count; i++) {
+        const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `seed_${Date.now()}_${i}`;
+        const msg = sampleMsgs[i % sampleMsgs.length];
+        const pos = calculateLeafPosition(currentApproved + i, id);
+        const now = new Date(Date.now() - (count - i) * 120000).toISOString();
 
-      const wish: Wish = {
-        id,
-        message_content: msg,
-        created_at: now,
-        status: 'approved',
-        approved_at: now,
-        leaf_x: pos.x,
-        leaf_y: pos.y,
-        leaf_rotation: pos.rotation,
-        leaf_scale: pos.scale,
-        leaf_shade: pos.shade,
-        displayed_at: now,
-      };
+        const wish: Wish = {
+          id,
+          message_content: msg,
+          created_at: now,
+          status: 'approved',
+          approved_at: now,
+          leaf_x: pos.x,
+          leaf_y: pos.y,
+          leaf_rotation: pos.rotation,
+          leaf_scale: pos.scale,
+          leaf_shade: pos.shade,
+          displayed_at: now,
+        };
 
-      batch.set(doc(db, 'wishes', id), wish);
-      added.push(wish);
+        batch.set(doc(db, 'wishes', id), wish);
+        added.push(wish);
+      }
+
+      await batch.commit();
+      return added;
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.WRITE, 'wishes');
+      }
+      throw err;
     }
-
-    await batch.commit();
-    return added;
-  },
-
-  async seedInitialWishes(): Promise<void> {
-    const batch = writeBatch(db);
-    INITIAL_SAMPLE_WISHES.forEach((msg, idx) => {
-      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `init_${Date.now()}_${idx}`;
-      const pos = calculateLeafPosition(idx, id);
-      const now = new Date(Date.now() - (INITIAL_SAMPLE_WISHES.length - idx) * 180000).toISOString();
-
-      const wish: Wish = {
-        id,
-        message_content: msg,
-        created_at: now,
-        status: 'approved',
-        approved_at: now,
-        leaf_x: pos.x,
-        leaf_y: pos.y,
-        leaf_rotation: pos.rotation,
-        leaf_scale: pos.scale,
-        leaf_shade: pos.shade,
-        displayed_at: now,
-      };
-
-      batch.set(doc(db, 'wishes', id), wish);
-    });
-
-    await batch.commit();
   },
 
   async resetData(): Promise<boolean> {
-    // Delete all existing wishes
-    const snap = await getDocs(collection(db, 'wishes'));
-    const batch = writeBatch(db);
-    snap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
+    try {
+      // Delete all existing wishes (leave empty without auto-seeding sample wishes)
+      const snap = await getDocs(collection(db, 'wishes'));
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
 
-    // Reset settings
-    await setDoc(doc(db, 'settings', 'default'), DEFAULT_SETTINGS);
+      // Reset settings
+      await setDoc(doc(db, 'settings', 'default'), {
+        ...DEFAULT_SETTINGS,
+        updated_at: new Date().toISOString(),
+      });
 
-    // Re-seed initial wishes
-    await this.seedInitialWishes();
-    return true;
+      return true;
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handleFirestoreError(err, OperationType.DELETE, 'wishes');
+      }
+      throw err;
+    }
   },
 
   getExportCsvUrl(): string {

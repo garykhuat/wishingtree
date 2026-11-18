@@ -198,45 +198,7 @@ function calculateLeafPosition(index: number, id: string): { x: number; y: numbe
   };
 }
 
-// Initial realistic event wishes in Vietnamese
-const INITIAL_SAMPLE_WISHES: string[] = [
-  "Chúc mừng đại lễ kỷ niệm thành công rực rỡ, thương hiệu ngày càng vươn xa toàn cầu!",
-  "Kính chúc ban lãnh đạo và toàn thể anh chị em luôn dồi dào sức khỏe, nhiệt huyết và đoàn kết.",
-  "Biết ơn những người đồng đội tuyệt vời đã luôn sát cánh, cùng nhau vượt qua mọi thử thách.",
-  "Mỗi chiếc lá là một niềm tin son sắt, chúc công ty luôn tràn đầy sức sống và bứt phá ngoạn mục!",
-  "Cảm ơn vì một năm đầy nỗ lực. Chúc gia đình chúng ta luôn bình an, thịnh vượng và hạnh phúc.",
-  "Chúc cho những khát vọng của chúng ta hôm nay sẽ nở hoa kết trái rực rỡ trong tương lai.",
-  "Một hành trình diệu kỳ, tự hào là một phần của đại gia đình thân yêu này!",
-  "Nguyện ước bình an, may mắn và mọi điều tốt đẹp nhất đến với tất cả các thành viên.",
-  "Vững bước tiên phong, kiến tạo giá trị bền vững và mang lại hạnh phúc cho cộng đồng.",
-  "Gửi gắm vào cây trà cổ thụ lời tri ân sâu sắc nhất tới tất cả những ai đã cống hiến âm thầm.",
-  "Chúc năm mới khởi sắc thăng hoa, doanh thu vượt đỉnh, vạn sự hanh thông!",
-  "Đoàn kết là sức mạnh, cùng nhau ta có thể chạm tới những đỉnh cao mới.",
-  "Tâm huyết trao đi, yêu thương nhận lại. Chúc cho tinh thần trà Việt luôn lan tỏa muôn phương.",
-  "Nguyện cho mỗi dự án mới đều thuận buồm xuôi gió, ghi dấu ấn rạng rỡ trên thị trường.",
-  "Chúc tập thể chúng ta mãi giữ vững ngọn lửa đam mê, sáng tạo và bứt phá không ngừng!"
-];
-
 function getInitialDatabase(): DatabaseSchema {
-  const initialWishes: Wish[] = INITIAL_SAMPLE_WISHES.map((msg, idx) => {
-    const id = crypto.randomUUID();
-    const pos = calculateLeafPosition(idx, id);
-    const date = new Date(Date.now() - (INITIAL_SAMPLE_WISHES.length - idx) * 180000);
-    return {
-      id,
-      message_content: msg,
-      created_at: date.toISOString(),
-      status: 'approved',
-      approved_at: date.toISOString(),
-      leaf_x: pos.x,
-      leaf_y: pos.y,
-      leaf_rotation: pos.rotation,
-      leaf_scale: pos.scale,
-      leaf_shade: pos.shade,
-      displayed_at: date.toISOString()
-    };
-  });
-
   return {
     settings: {
       id: 'default',
@@ -255,7 +217,7 @@ function getInitialDatabase(): DatabaseSchema {
       },
       updated_at: new Date().toISOString()
     },
-    wishes: initialWishes
+    wishes: []
   };
 }
 
